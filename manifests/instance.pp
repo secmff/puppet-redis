@@ -78,7 +78,10 @@ define redis::instance (
   $redis_slowlog_log_slower_than = $redis::params::redis_slowlog_log_slower_than,
   $redis_slowlog_max_len = $redis::params::redis_slowlog_max_len,
   $redis_password = $redis::params::redis_password,
-  $redis_saves = $redis::params::redis_saves
+  $redis_saves = $redis::params::redis_saves,
+  $redis_cluster_enabled = $redis::params::redis_cluster_enabled,
+  $redis_cluster_node_timeout = $redis::params::redis_cluster_node_timeout,
+  $redis_appendonly = $redis::params::redis_appendonly
   ) {
 
   # Using Exec as a dependency here to avoid dependency cyclying when doing
@@ -86,8 +89,7 @@ define redis::instance (
   Exec['install-redis'] -> Redis::Instance[$name]
   include redis
 
-  $version = $redis::version
-
+  $version  = $redis::version
   case $version {
     /^2\.4\.\d+$/: {
       if ($redis_max_clients == false) {
@@ -96,9 +98,14 @@ define redis::instance (
       else {
         $real_redis_max_clients = $redis_max_clients
       }
+        $conf_template = 'redis_port.conf.erb'
     }
-    /^2\.[68]\.\d+$/,/^3\.\d\.\d+$/: {
+    /^2\.[68]\.\d+$/: {
       $real_redis_max_clients = $redis_max_clients
+      $conf_template = 'redis_port.conf.erb'
+    }
+    /^3\.\d\.\d+$/: {
+      $conf_template = 'redis_port_v3.conf.erb'
     }
     default: {
       fail("Invalid redis version, ${version}. It must match 2.4.\\d+, 2.[68].\\d+. or 3.\\d.\\d")
@@ -121,7 +128,7 @@ define redis::instance (
     ensure  => present,
     path    => "/etc/redis/${redis_port}.conf",
     mode    => '0644',
-    content => template('redis/redis_port.conf.erb'),
+    content => template("redis/${conf_template}"),
   }
 
   service { "redis-${redis_port}":
